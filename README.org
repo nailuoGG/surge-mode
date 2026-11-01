@@ -1,0 +1,94 @@
+#+title: surge-mode
+
+[[file:README.cn.org][Chinese]]
+
+An independently implemented Emacs package for editing Surge files.  The package itself uses only built-in Emacs libraries; offline highlighting, comments, and Imenu do not require Surge to be installed.  Official diagnostics require macOS, Surge Mac 6.10.0 or later, and a working ~surge-cli lsp --stdio~ executable.
+
+| Mode                 | Content            | Official languageId |
+|----------------------+--------------------+---------------------|
+| ~surge-conf-mode~    | Configuration file | ~surge~             |
+| ~surge-module-mode~  | Module             | ~surge-module~      |
+| ~surge-ruleset-mode~ | RULE-SET file      | ~surge-ruleset~     |
+
+RULE-SET and DOMAIN-SET are different formats; this package does not treat DOMAIN-SET files as rulesets for validation.
+
+The declared minimum Emacs version is 29.1.  The package is currently tested on Emacs 32.0.50, but has not yet been run on Emacs 29.1.  It is licensed under GPL-3.0-or-later; see [[file:COPYING][COPYING]].  The implementation does not copy JavaScript or TextMate grammar code from the Surge VS Code extension.
+
+* Installation and editing
+
+Add this repository to ~load-path~, then load the package:
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/surge-mode")
+(require 'surge-mode)
+#+end_src
+
+The package automatically recognizes ~.sgconf~, ~.sgmodule~, and files named exactly ~Surge.conf~.  Ordinary ~.conf~ and ~.dconf~ suffixes may belong to other tools, so they use ~surge-conf-mode~ automatically only inside a directory listed in ~surge-project-roots~.  Each root should represent one independent Surge configuration workspace.  When roots are nested, the most specific root wins:
+
+#+begin_src elisp
+(setq surge-project-roots
+      '("~/Code/surge/home/"
+        "~/Code/surge/work/"))
+#+end_src
+
+For module content, run ~M-x surge-module-mode~ manually or configure the mode for known directories.  Other ~.conf~, ~.txt~, and ~.list~ files are not claimed globally.  For a confirmed ruleset, run ~M-x surge-ruleset-mode~ or add an exact association:
+
+#+begin_src elisp
+(add-to-list 'auto-mode-alist '("/my-reviewed-rules\\.list\\'" . surge-ruleset-mode))
+#+end_src
+
+The package highlights section names, assignment keys, and rule types in ~[Rule]~; ruleset mode does not require a section.  Use ~M-x imenu~ to navigate sections, ~M-;~ to insert ~#~ comments, and TAB for Emacs-style relative indentation.  The package does not provide formatting or a Surge syntax parser.
+
+Comment recognition is intentionally conservative.  At the beginning of a line or after whitespace, ~#~, ~;~, and ~//~ start a comment unless they occur inside a double-quoted string.  A double quote starts a string only at the beginning of a line or after a comma or equals sign, with optional whitespace; quotes inside regular-expression fields remain punctuation.  Field strings end at the physical end of the line.  An unterminated quote does not affect the next line, and a trailing backslash does not continue the string.  The ~https://~ in a URL and a ~#fragment~ without preceding whitespace remain ordinary content.  Logical and regular-expression parentheses are treated as punctuation to avoid Lisp-style expression parsing.  These editing rules are not a complete Surge lexical specification; official diagnostics decide the validity of complex scripts, regular expressions, and quoting.  For nested logical rules, only the outermost rule type is highlighted.  Editing a section triggers refontification of subsequent content.  Performance on large ruleset repositories has not been tested.
+
+* lsp-bridge
+
+First install the Emacs and Python dependencies documented by lsp-bridge.  Check the official executable with:
+
+#+begin_src sh
+/Applications/Surge.app/Contents/Applications/surge-cli help lsp
+#+end_src
+
+The lsp-bridge branch ~feat/surge-lsp-support~ includes a built-in ~surge~ configuration.  Only when using a version without that configuration should you *manually copy* [[file:examples/lsp-bridge/surge.json][surge.json]] into ~lsp-bridge-user-langserver-dir~.  Load the integration example to enable project-root and nonstandard-suffix languageId handling:
+
+#+begin_src elisp
+;; Only older lsp-bridge versions need lsp-bridge-user-langserver-dir
+;; to point at the directory containing the copied surge.json.
+(load "/path/to/surge-mode/examples/lsp-bridge/surge-lsp-bridge.el")
+#+end_src
+
+The [[file:examples/lsp-bridge/surge-lsp-bridge.el][integration example]] maps all three modes to the server name ~surge~, selects a languageId from the file buffer's mode, and preserves the existing callback for other servers.  It also gives ~surge-project-roots~ priority as the lsp-bridge project root while preserving the existing project-root resolution for files outside those directories.  The example enables lsp-bridge for all three modes.  Loading it changes client configuration in the current Emacs session but does not write to the init file.  Do not start Eglot and lsp-bridge for the same buffer.
+
+The official initialization response declares UTF-16 positions and full-document synchronization.  This integration currently relies only on diagnostics and does not promise completion, Hover, or formatting.  A process and optional file watcher are shared by a project root and server name; isolated files with no matching root may still start separate processes.  Do not declare a broad directory containing multiple unrelated main configurations as one root, because their diagnostic contexts may overwrite one another.  Open files through their real paths so aliases such as ~/tmp~ and ~/private/tmp~ do not create different project or file identities.
+
+See the [[file:test/VALIDATION.org][validation record]] for the observed boundaries of cross-file references, external disk changes, and diagnostics for unopened files.  The default ~surge.json~ has no static file-tree watcher; after changing an included file externally, save the parent configuration to refresh diagnostics.
+
+The built-in configuration on ~feat/surge-lsp-support~ enables ~watchFiles~ when external content changes must be handled automatically.  With an lsp-bridge version that supports ~watchFiles~ but has no built-in Surge configuration, use [[file:examples/lsp-bridge/surge-watch.json][surge-watch.json]] as ~surge.json~ in the user language-server directory.  Review the glob scope before use, then restart the corresponding language server.  This option watches path events for matching files inside the project; it does not scan file contents.
+
+Testing confirmed that the watcher can refresh parent diagnostics after the content of an included file changes externally.  However, after the official server receives delete and create notifications, diagnostics may remain stale when a file is renamed or recreated; saving the parent configuration is then required.  A raw protocol probe reproduced the same behavior.  The optional watcher therefore does not guarantee automatic refresh for those operations or parity with the VS Code extension.
+
+* Validation
+
+Offline tests and strict byte compilation:
+
+#+begin_src sh
+emacs -Q --batch -L . -l test/surge-mode-test.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . --eval '(progn (setq byte-compile-error-on-warn t) (byte-compile-file "surge-mode.el"))'
+#+end_src
+
+The integration-example regression tests require lsp-bridge and its Emacs dependencies on ~load-path~.  The following command tests only languageId selection and callback delegation; it does not start a server process:
+
+#+begin_src sh
+emacs -Q --batch -L . -L examples/lsp-bridge \
+  -L /path/to/lsp-bridge -L /path/to/lsp-bridge/acm \
+  -L /path/to/markdown-mode -L /path/to/yasnippet \
+  -l test/surge-lsp-bridge-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+Official diagnostics for synthetic files require a local Surge installation and use temporary files only:
+
+#+begin_src sh
+emacs -Q --batch -L . -l test/smoke-eglot.el
+#+end_src
+
+That script uses Eglot to verify that the package participates in a real diagnostics path.  The three lsp-bridge languageIds, overlays, full-document updates, and cross-file behavior were validated separately; an Eglot result is not a substitute for an lsp-bridge result.  See the [[file:test/VALIDATION.org][validation record]] for detailed evidence and untested areas.

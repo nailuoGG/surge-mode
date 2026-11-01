@@ -1,0 +1,94 @@
+#+title: surge-mode
+
+[[file:README.org][English]]
+
+独立实现的 Emacs Surge 编辑包。包本体仅使用 Emacs 内置库；离线高亮、注释和 Imenu 不需要安装 Surge。官方诊断需要 macOS、Surge Mac 6.10.0+ 和可执行的 ~surge-cli lsp --stdio~。
+
+| 模式                   | 内容          | 官方 languageId |
+|------------------------+---------------+-----------------|
+| ~surge-conf-mode~      | 配置文件      | ~surge~         |
+| ~surge-module-mode~    | 模块          | ~surge-module~  |
+| ~surge-ruleset-mode~   | RULE-SET 文件 | ~surge-ruleset~ |
+
+RULE-SET 与 DOMAIN-SET 不同；本包不把 DOMAIN-SET 当作规则集验证。
+
+声明最低 Emacs 29.1；目前实际验证版本为 Emacs 32.0.50，尚未在 Emacs 29.1 上运行。许可证为 GPL-3.0-or-later，见 [[file:COPYING][COPYING]]。实现没有复制 Surge VS Code 扩展的 JavaScript 或 TextMate 语法。
+
+* 安装与编辑
+
+将本仓库加入 ~load-path~，然后加载包：
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/surge-mode")
+(require 'surge-mode)
+#+end_src
+
+自动识别 ~.sgconf~、~.sgmodule~ 和名称严格为 ~Surge.conf~ 的文件。普通 ~.conf~ 与 ~.dconf~ 后缀可能属于其他工具，只有位于 ~surge-project-roots~ 中时才自动使用 ~surge-conf-mode~。每个根目录应表示一个独立的 Surge 配置工作区；嵌套根目录优先使用最具体的根：
+
+#+begin_src elisp
+(setq surge-project-roots
+      '("~/Code/surge/home/"
+        "~/Code/surge/work/"))
+#+end_src
+
+模块内容请手动执行 ~M-x surge-module-mode~，或对已知目录设置模式。其他 ~.conf~、~.txt~、~.list~ 不会被全局接管。对已确认的规则集执行 ~M-x surge-ruleset-mode~，或设置精确关联：
+
+#+begin_src elisp
+(add-to-list 'auto-mode-alist '("/my-reviewed-rules\\.list\\'" . surge-ruleset-mode))
+#+end_src
+
+支持 section 名、赋值左侧和 ~[Rule]~ 中规则类型的高亮；规则集模式不需要 section。~M-x imenu~ 导航 section，~M-;~ 使用 ~#~ 注释，TAB 使用 Emacs 的相对缩进。不提供格式化或 Surge 语法解析器。
+
+注释采用保守的编辑规则：行首或空白之后的 ~#~、~;~、~//~ 开始注释，双引号字符串内除外。双引号只在行首、逗号或等号之后（允许空白）开始字符串；字段内部的正则字面量引号保持标点。字段字符串在物理行末结束；编辑中未闭合的引号不会影响下一行，行末反斜杠也不延续字符串。URL 中的 ~https://~ 和无空白的 ~#fragment~ 保持普通内容；逻辑括号与正则括号按标点处理，避免把正则误当 Lisp 表达式。此规则用于编辑，不代表完整的 Surge 词法规范；复杂脚本、正则和引号用法的合法性由官方诊断决定。嵌套逻辑规则只高亮最外层规则类型。修改 section 后会重新高亮后续内容；未对大型规则库做性能验证。
+
+* lsp-bridge
+
+先按 lsp-bridge 自身说明安装其 Emacs/Python 依赖。检查官方程序：
+
+#+begin_src sh
+/Applications/Surge.app/Contents/Applications/surge-cli help lsp
+#+end_src
+
+lsp-bridge 的 ~feat/surge-lsp-support~ 分支已经内置 ~surge~ 配置。使用尚未包含该配置的版本时，才需要将 [[file:examples/lsp-bridge/surge.json][surge.json]] *手动复制* 到 ~lsp-bridge-user-langserver-dir~。加载接入示例以启用项目根和非标准后缀的 languageId 处理：
+
+#+begin_src elisp
+;; 旧版 lsp-bridge 才需要把 lsp-bridge-user-langserver-dir
+;; 指向已复制 surge.json 的目录。
+(load "/path/to/surge-mode/examples/lsp-bridge/surge-lsp-bridge.el")
+#+end_src
+
+[[file:examples/lsp-bridge/surge-lsp-bridge.el][接入示例]] 将三个模式映射到同一个服务器名 ~surge~，依据文件 buffer 的模式选择 languageId，其他服务器继续使用原有回调。示例还会让 ~surge-project-roots~ 优先作为 lsp-bridge 项目根，并在文件不属于这些目录时保留原有项目根解析。示例会为三个模式开启 lsp-bridge；加载示例会改变当前 Emacs 会话的客户端配置，不写入 init 文件。不同时为同一 buffer 启动 Eglot 和 lsp-bridge。
+
+官方初始化声明 UTF-16 位置和全文同步；当前只依赖其诊断能力，不承诺补全、Hover 或格式化。同一 ~surge-project-roots~ 根目录与服务器名共享进程和可选文件监听；没有匹配根目录的孤立文件仍可能各自启动进程。不要把包含多个互不相关主配置的宽泛目录声明为一个根，否则不同主配置的诊断上下文可能相互覆盖。用真实路径打开文件，避免 ~/tmp~ 与 ~/private/tmp~ 别名产生不同的项目或文件身份。
+
+跨文件引用、磁盘外部变更及未打开文件诊断的实际边界见 [[file:test/VALIDATION.org][验证记录]]。默认 ~surge.json~ 没有静态文件树监听；外部修改 include 文件后，保存父配置可刷新诊断。
+
+需要自动响应外部文件的内容修改时，~feat/surge-lsp-support~ 分支的内置配置已经启用 ~watchFiles~。对没有内置 Surge 配置但已支持 ~watchFiles~ 的 lsp-bridge，可将 [[file:examples/lsp-bridge/surge-watch.json][surge-watch.json]] 作为用户配置目录中的 ~surge.json~。使用前先审查 glob 范围并重启对应语言服务。该选项监听项目内匹配文件的路径事件，不扫描文件内容。
+
+已验证监听可使外部 include 内容修改自动刷新父诊断。但官方服务端收到删除、创建通知后，在重命名或重建文件的场景仍可能不刷新诊断；此时必须保存父配置。原始协议 probe 也复现了该行为。可选监听不保证这些操作能自动刷新，也不保证与 VS Code 扩展行为一致。
+
+* 验证
+
+离线测试与严格字节编译：
+
+#+begin_src sh
+emacs -Q --batch -L . -l test/surge-mode-test.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . --eval '(progn (setq byte-compile-error-on-warn t) (byte-compile-file "surge-mode.el"))'
+#+end_src
+
+接入示例的回归测试需要先将 lsp-bridge 及其 Emacs 依赖加入 ~load-path~，然后运行以下命令；此测试只验证 languageId 选择和回调委托，不启动服务端进程：
+
+#+begin_src sh
+emacs -Q --batch -L . -L examples/lsp-bridge \
+  -L /path/to/lsp-bridge -L /path/to/lsp-bridge/acm \
+  -L /path/to/markdown-mode -L /path/to/yasnippet \
+  -l test/surge-lsp-bridge-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+合成文件的官方诊断验证（需要本机 Surge；仅临时文件）：
+
+#+begin_src sh
+emacs -Q --batch -L . -l test/smoke-eglot.el
+#+end_src
+
+该脚本通过 Eglot 验证包能参与真实诊断链路。lsp-bridge 的三种 languageId、overlay、全文更新和跨文件行为单独验证；不能用 Eglot 结果代替 lsp-bridge 结果。详细证据与未验证范围见 [[file:test/VALIDATION.org][验证记录]]。

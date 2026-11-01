@@ -1,0 +1,121 @@
+#+title: Validation Record
+
+Date: 2026-10-17.  All validation used synthetic content in temporary directories.  It did not read real nodes, secrets, or application configurations, and it did not connect to Surge Controller.
+
+* Editing modes
+
+The host was macOS 15.8.1 arm64 with GNU Emacs 32.0.50 and Surge Mac 6.10.0, verified from the application's ~CFBundleShortVersionString~.
+
+#+begin_src sh
+emacs -Q --batch -L . -l test/surge-mode-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+Result: 11/11 passed, exit 0.  Coverage included URLs and fragments, comment markers inside strings, escaped quotes, syntax state after deleting a comment marker, section-aware highlighting, parentheses in scripts and logical rules, sectionless rulesets, module metadata, Imenu, conservative extension associations, comment round trips, refontification after renaming a section, literal quotes in rule and script regular expressions, semicolon comments, and trailing comments on section lines.  It also covered physical-line recovery after ordinary unterminated quotes and trailing backslashes.
+
+An independent review used the official ~surge-cli --check~ to confirm that semicolon comments and ~[Rule] ; comment~ are valid (exit 0 / ~OK~), and reproduced the original implementation's ~semicolon-comment=nil~, nil section, and missing rule highlighting.  The fix covered shared syntax, section matching, key matching, and uncommenting while preserving semicolons in URLs and strings as ordinary content.
+
+The literal-quote regression was first reproduced at runtime: after ~URL-REGEX,^https://example.invalid/["],DIRECT~, the following ~# comment~ originally returned ~comment=nil string=34~.  Restricting string starts to field boundaries made the corresponding regression test pass.
+
+#+begin_src sh
+emacs -Q --batch -L . --eval '(progn (setq byte-compile-error-on-warn t) (byte-compile-file "surge-mode.el"))'
+emacs -Q --batch -L . --eval '(progn (require (quote checkdoc)) (checkdoc-file "surge-mode.el"))'
+emacs -Q --batch -L . --eval '(progn (require (quote checkdoc)) (checkdoc-file "examples/lsp-bridge/surge-lsp-bridge.el"))'
+#+end_src
+
+Result: the package byte-compiled without warnings, checkdoc produced no output for either file, and all commands exited 0.
+
+* Field quotes and physical lines
+
+Six configurations were compared with ~/Applications/Surge.app/Contents/Applications/surge-cli --check <synthetic.conf>~.  Each configuration began with ~[General]~ and ended with ~[Rule]~ and ~FINAL,DIRECT~.  In the table, ~\n~ denotes an actual newline.
+
+| Field content in General                           | Exit status and result               |
+|----------------------------------------------------+--------------------------------------|
+| ~loglevel = notify~                                | 0, ~OK~                              |
+| ~loglevel = "notify"~                              | 0, ~OK~                              |
+| ~loglevel = "not\nify"~                           | 1, ~ify"~ invalid on line 3          |
+| ~loglevel = "not\\\nify"~                         | 1, ~ify"~ invalid on line 3          |
+| ~loglevel = "notify~ then a newline and ~[Rule]~   | 0, ~OK~                              |
+| ~loglevel = "notify\n# physical comment\n"~       | 1, standalone ~"~ invalid on line 4 |
+
+These results show that a quote in an ordinary field should not place later physical lines in the same string; they do not establish that every Surge construct forbids multiline syntax.  The editing mode uses single-line field strings and restores syntax state at line end after an unterminated quote or trailing backslash.  New regression assertions verify that a rule on the next line is still highlighted and later comments are still recognized.
+
+* Official diagnostics (Eglot)
+
+#+begin_src sh
+/Applications/Surge.app/Contents/Applications/surge-cli help lsp
+emacs -Q --batch -L . -l test/smoke-eglot.el
+#+end_src
+
+The CLI help confirmed the three languageIds, full-document synchronization, and offline diagnostics.  The smoke command exited 0 with this key output:
+
+#+begin_example
+MANAGED=t MODE=surge-conf-mode DIAGNOSTICS=("surge [unknown-general-key]: Unknown [General] key: unknown-general-key.")
+[jsonrpc] Server exited with status 0
+#+end_example
+
+Batch operation required an explicit Eglot connection followed by ~flymake-start~.  Calling only ~eglot-ensure~ did not complete validation in this batch flow.  This result validates the configuration mode's path to diagnostics from the official executable; lsp-bridge results are recorded separately.
+
+* lsp-bridge
+
+An independent review of the integration example found that directly setting ~lsp-bridge-get-language-id~ and then calling only an existing callback omitted the client's built-in Tailwind languageId fallback when the original callback was nil.  The example was changed to call the original resolver while dynamically binding the original callback, preserving the client's default behavior.
+
+A client session validated diagnostic overlays with the final example and all three real modes.  Official cross-file behavior was also validated: a parent configuration used ~#!include child.dconf~ under ~[Script]~, and a rule referenced ~SCRIPT,test,DIRECT~.  After the child changed from an empty ~[Script]~ section to ~test=type=rule,script-path=example.js~, an unsaved didChange cleared the parent's diagnostic count from 1 to 0; after saving it remained 0.  The project used one server process.
+
+External changes have a clear boundary.  After closing the child and removing the ~test~ definition on disk, the parent diagnostic count remained 0.  Saving the parent configuration again changed the count to 1.  The default example does not watch the complete file tree; after an included file changes externally, save the parent configuration to trigger a refresh.  The optional ~surge-watch.json~ applies only to the local lsp-bridge branch ~feat/surge-lsp-support~, which provides the ~watchFiles~ interface.  The default configuration remains compatible with the original client.
+
+The final example's fallback checks passed 3/3: with a nil original callback, Tailwind returned ~javascriptreact~ for ~jsx~, ~tsx~ for ~tsx~, and nil for other servers; an existing callback received all four arguments unchanged; and the three Surge modes returned their corresponding IDs.  Log: ~/tmp/lsp-bridge-surge-check/fallback.log~.
+
+The repository's callback regression tests in ~test/surge-lsp-bridge-test.el~ passed 3/3 in the primary session, exit 0.  Command:
+
+#+begin_src sh
+emacs -Q --batch --eval '(setq load-prefer-newer t)' \
+  -L /Users/liujiale/Code/github.com/manateelazycat/lsp-bridge \
+  -L /Users/liujiale/Code/github.com/manateelazycat/lsp-bridge/acm \
+  -L /Users/liujiale/.config/emacs/.local/elpaca/sources/markdown-mode \
+  -L /Users/liujiale/.config/emacs/.local/elpaca/sources/yasnippet \
+  -L . -L examples/lsp-bridge \
+  -l test/surge-lsp-bridge-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
+The client session used this formal protocol-validation command with ~/Users/liujiale/Code/github.com/manateelazycat/lsp-bridge~ as its working directory:
+
+#+begin_src sh
+emacs -Q --batch --eval '(setq load-prefer-newer t)' \
+  -L . -L acm \
+  -L /Users/liujiale/.config/emacs/.local/elpaca/sources/markdown-mode \
+  -L /Users/liujiale/.config/emacs/.local/elpaca/sources/yasnippet \
+  -L /Users/liujiale/Code/github.com/nailuoGG/surge-mode \
+  -l /tmp/lsp-bridge-surge-check/check.el \
+  > /tmp/lsp-bridge-surge-check/emacs-watch.log 2>&1
+#+end_src
+
+Result: exit 0 and ~SURGE CHECK PASS~.  A temporary JSON configuration routed the protocol through ~proxy.py~ to the official CLI, using ~/tmp/lsp-bridge-surge-venv/bin/python~ as the Python environment.  This command depends on a local, synthetic, temporary entry point and is not a portable repository test.
+
+Protocol logs and results:
+
+- ~/tmp/lsp-bridge-surge-check/emacs.log~: baseline path with no static watcher.
+- ~/tmp/lsp-bridge-surge-check/emacs-watch.log~: final example with real modes; with the watcher enabled, external included-file content changes automatically changed the parent diagnostic count ~1→0→1~.
+- ~/tmp/lsp-bridge-surge-check/fallback.log~: 3/3 independent callback fallback checks.
+- ~/tmp/lsp-bridge-surge-check/watched.log~: direct file-event messages to the official server, bypassing the client, reproduced the lack of refresh after delete, create, and rename; saving the parent refreshed diagnostics.  This is an official-server limitation, and the optional watcher does not claim to solve it.
+
+* Project roots and ambiguous suffixes (2026-11-01)
+
+~surge-project-roots~ was added to restrict automatic recognition of ordinary ~.conf~ and ~.dconf~ files to user-declared Surge workspaces.  ~.sgconf~, ~.sgmodule~, and the exact filename ~Surge.conf~ remain globally recognized.  ~surge-project-root~ uses real paths and chooses the longest matching root; a symlink inside a project that points outside it is not recognized as a Surge project file.
+
+The lsp-bridge example now gives the same Surge root priority, delegating to the project-root callback that existed before the example was loaded when a file is outside those directories.  If the original callback is nil, lsp-bridge's ~.dir-locals.el~ fallback is preserved.  Both JSON examples declare ~languageIds~ for ordinary suffixes, and the optional watcher example includes ~**/*.sgconf~.
+
+A behavioral probe in the running Emacs confirmed that project-local ~.conf~ and ~.dconf~ files enter ~surge-conf-mode~, a ~.conf~ file outside the project remains in ~conf-unix-mode~, and the lsp-bridge callback returns the configured Surge root.  The probe only created and removed a temporary directory; it did not start a language-server process.
+
+The final ERT suite contained 20 tests with 0 unexpected results: 14 editing and project-root tests plus 6 lsp-bridge integration tests.  New coverage included longest-root matching, ambiguous suffixes inside and outside projects, symlink escape, explicit root priority, existing callback delegation, and the default ~.dir-locals.el~ fallback.  All five Elisp files passed ~check-parens~.  ~surge-mode.el~ and ~surge-lsp-bridge.el~ compiled with ~byte-compile-error-on-warn=t~; their outputs were written to and then removed from a temporary directory.  Both JSON examples parsed successfully.
+
+* Final review
+
+The primary session independently reviewed shared syntax, section matching, and the client fallback, then reran the final 11/11 editing tests with no blockers.  This session also reran the 3/3 client callback tests and the official Eglot smoke test; both exited 0.  All 11 new files were checked with ~git diff --no-index --check /dev/null <file>~.  Exit 1 was ignored only when it indicated the presence of additions; no whitespace-error output appeared.  The aggregate check exited 0 with 0 issues.
+
+* Validation boundaries
+
+- Emacs 29.1 is the declared minimum version but has not been tested.
+- Completion, Hover, formatting, complete lexical parsing, and feature parity with the official VS Code extension are not claimed.
+- Editing performance on large ruleset repositories has not been tested.
+- No user Emacs configuration, real Surge configuration, or runtime state was modified.
+- The local feature branch is ~feat/surge-conf-mode~; it was not pushed or released.
