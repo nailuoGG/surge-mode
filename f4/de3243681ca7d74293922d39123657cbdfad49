@@ -1,0 +1,20 @@
+README.cn.org
+  s_d49e6afd40fd94::t_f93b72448ec46c 5,19,26,34,40,42,56,68,76,102
+  s_d49e6afd40fd94::t_c32394591e03a1 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f4de3243681ca7d74293922d39123657cbdfad49",
+  "prompts": {},
+  "sessions": {
+    "s_d49e6afd40fd94": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a18ff8-6f62-74d8-8543-310186f7f133",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James L. <nailuogg@gmail.com>"
+    }
+  }
+}
