@@ -1,0 +1,39 @@
+README.org
+  s_d49e6afd40fd94::t_53baa30c2a74c6 44-59,95-101,114
+examples/eglot/surge-eglot.el
+  s_d49e6afd40fd94::t_d9a0b7b245b4b6 43
+  s_d49e6afd40fd94::t_a40a42e3d23913 1-14,18,28-42,44-46,48-51
+  s_d49e6afd40fd94::t_5fdbff96f25129 15-17,19-27,47
+README.cn.org
+  s_d49e6afd40fd94::t_81a21d0cadff29 44-59,95-101,114
+test/surge-eglot-test.el
+  s_d49e6afd40fd94::t_0c8bd2a89f898b 1-29,32-36,53-66
+  s_d49e6afd40fd94::t_d2173cb06e6f4f 30-31
+  s_d49e6afd40fd94::t_748fded4b1ae51 37-52
+test/smoke-eglot.el
+  s_d49e6afd40fd94::t_be34a1f9f26cc8 3,7
+  s_d49e6afd40fd94::t_c32e788b4de9bb 30-43
+  s_d49e6afd40fd94::t_1571b4b92cd843 10
+  s_d49e6afd40fd94::t_f958790f698366 24-29
+  s_d49e6afd40fd94::t_f031c709f5dd16 8-9,11
+  s_d49e6afd40fd94::t_200e3571139203 14-16,18,22,47-57
+test/VALIDATION.org
+  s_d49e6afd40fd94::t_e896f36478d107 46-48,51-53
+  s_d49e6afd40fd94::t_49ec96b9fd6d6d 54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f1ef249c01239d8ee30dfc478b918382275c271",
+  "prompts": {},
+  "sessions": {
+    "s_d49e6afd40fd94": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a18ff8-6f62-74d8-8543-310186f7f133",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "James L. <nailuogg@gmail.com>"
+    }
+  }
+}
