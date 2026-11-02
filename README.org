@@ -41,6 +41,22 @@ The package highlights section names, assignment keys, and rule types in ~[Rule]
 
 Comment recognition is intentionally conservative.  At the beginning of a line or after whitespace, ~#~, ~;~, and ~//~ start a comment unless they occur inside a double-quoted string.  A double quote starts a string only at the beginning of a line or after a comma or equals sign, with optional whitespace; quotes inside regular-expression fields remain punctuation.  Field strings end at the physical end of the line.  An unterminated quote does not affect the next line, and a trailing backslash does not continue the string.  The ~https://~ in a URL and a ~#fragment~ without preceding whitespace remain ordinary content.  Logical and regular-expression parentheses are treated as punctuation to avoid Lisp-style expression parsing.  These editing rules are not a complete Surge lexical specification; official diagnostics decide the validity of complex scripts, regular expressions, and quoting.  For nested logical rules, only the outermost rule type is highlighted.  Editing a section triggers refontification of subsequent content.  Performance on large ruleset repositories has not been tested.
 
+* Eglot
+
+Eglot is built into Emacs 29.1 and later.  Check the official executable, then load the optional integration:
+
+#+begin_src sh
+/Applications/Surge.app/Contents/Applications/surge-cli help lsp
+#+end_src
+
+#+begin_src elisp
+(load "/path/to/surge-mode/examples/eglot/surge-eglot.el")
+#+end_src
+
+The [[file:examples/eglot/surge-eglot.el][integration example]] maps all three modes and their official languageIds to one Surge language server.  It starts Eglot automatically from the shared ~surge-conf-mode-hook~, including the two derived modes.  The command resolver prefers ~surge-cli~ from ~exec-path~ and otherwise uses the executable bundled with Surge.app; startup reports an explicit error when neither exists.
+
+During Eglot project discovery, a matching ~surge-project-roots~ entry takes priority and lets all three modes in that workspace share one server.  The integration does not change ordinary ~project.el~ discovery.  Outside a configured Surge root, Eglot retains its normal project or transient-directory behavior.  Loading the example changes client configuration in the current Emacs session but does not write to the init file.  Do not load both client examples for the same buffers; Eglot and lsp-bridge must not manage one buffer simultaneously.
+
 * lsp-bridge
 
 First install the Emacs and Python dependencies documented by lsp-bridge.  Check the official executable with:
@@ -76,6 +92,13 @@ emacs -Q --batch -L . -l test/surge-mode-test.el -f ert-run-tests-batch-and-exit
 emacs -Q --batch -L . --eval '(progn (setq byte-compile-error-on-warn t) (byte-compile-file "surge-mode.el"))'
 #+end_src
 
+The Eglot integration tests cover all three languageIds, Eglot-only project discovery, command resolution, and repeated loading without starting a server process:
+
+#+begin_src sh
+emacs -Q --batch -L . -L examples/eglot \
+  -l test/surge-eglot-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
 The integration-example regression tests require lsp-bridge and its Emacs dependencies on ~load-path~.  The following command tests only languageId selection and callback delegation; it does not start a server process:
 
 #+begin_src sh
@@ -88,7 +111,7 @@ emacs -Q --batch -L . -L examples/lsp-bridge \
 Official diagnostics for synthetic files require a local Surge installation and use temporary files only:
 
 #+begin_src sh
-emacs -Q --batch -L . -l test/smoke-eglot.el
+emacs -Q --batch -L . -L examples/eglot -l test/smoke-eglot.el
 #+end_src
 
 That script uses Eglot to verify that the package participates in a real diagnostics path.  The three lsp-bridge languageIds, overlays, full-document updates, and cross-file behavior were validated separately; an Eglot result is not a substitute for an lsp-bridge result.  See the [[file:test/VALIDATION.org][validation record]] for detailed evidence and untested areas.

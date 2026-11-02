@@ -43,8 +43,14 @@ These results show that a quote in an ordinary field should not place later phys
 
 #+begin_src sh
 /Applications/Surge.app/Contents/Applications/surge-cli help lsp
-emacs -Q --batch -L . -l test/smoke-eglot.el
+emacs -Q --batch -L . -L examples/eglot \
+  -l test/surge-eglot-test.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . -L examples/eglot -l test/smoke-eglot.el
 #+end_src
+
+On 2026-11-02, the formal Eglot integration tests passed 4/4.  They covered all three official languageIds, project discovery restricted to Eglot context, deterministic CLI resolution, and idempotent loading.  The custom project method returns a directory name with a trailing slash.  This is required for Eglot to map the server's canonical ~/private/var/...~ URI back to a buffer opened through the macOS ~/var/...~ alias; a runtime probe reproduced the dropped diagnostic before the correction and verified delivery afterward.
+
+The smoke test clears inherited ~prog-mode-hook~ and ~surge-conf-mode-hook~ values only for its temporary buffer, then starts Eglot explicitly.  This prevents a caller's lsp-bridge hook from disabling Flymake during the Eglot-only check.  After connection, the test saves one harmless comment and waits for the expected diagnostic specifically, avoiding both a fast ~didOpen~ race and early exit on an unrelated transient diagnostic.
 
 The CLI help confirmed the three languageIds, full-document synchronization, and offline diagnostics.  The smoke command exited 0 with this key output:
 

@@ -41,6 +41,22 @@ RULE-SET 与 DOMAIN-SET 不同；本包不把 DOMAIN-SET 当作规则集验证�
 
 注释采用保守的编辑规则：行首或空白之后的 ~#~、~;~、~//~ 开始注释，双引号字符串内除外。双引号只在行首、逗号或等号之后（允许空白）开始字符串；字段内部的正则字面量引号保持标点。字段字符串在物理行末结束；编辑中未闭合的引号不会影响下一行，行末反斜杠也不延续字符串。URL 中的 ~https://~ 和无空白的 ~#fragment~ 保持普通内容；逻辑括号与正则括号按标点处理，避免把正则误当 Lisp 表达式。此规则用于编辑，不代表完整的 Surge 词法规范；复杂脚本、正则和引号用法的合法性由官方诊断决定。嵌套逻辑规则只高亮最外层规则类型。修改 section 后会重新高亮后续内容；未对大型规则库做性能验证。
 
+* Eglot
+
+Emacs 29.1 及以上版本内置 Eglot。先检查官方程序，再加载可选接入示例：
+
+#+begin_src sh
+/Applications/Surge.app/Contents/Applications/surge-cli help lsp
+#+end_src
+
+#+begin_src elisp
+(load "/path/to/surge-mode/examples/eglot/surge-eglot.el")
+#+end_src
+
+[[file:examples/eglot/surge-eglot.el][接入示例]] 将三个模式及其官方 languageId 映射到同一个 Surge 语言服务器。示例通过共用的 ~surge-conf-mode-hook~ 自动启动 Eglot，两个派生模式也适用。命令解析优先使用 ~exec-path~ 中的 ~surge-cli~，找不到时使用 Surge.app 内置程序；两者都不存在时会报告明确错误。
+
+Eglot 查找项目时，匹配的 ~surge-project-roots~ 条目优先，使同一工作区内的三个模式共用一个服务器。该接入不改变普通 ~project.el~ 查询；文件不在已配置的 Surge 根目录时，Eglot 保留原有项目或临时目录行为。加载示例只改变当前 Emacs 会话的客户端配置，不写入 init 文件。同一组 buffer 只能选择一个客户端示例；Eglot 和 lsp-bridge 不能同时管理同一 buffer。
+
 * lsp-bridge
 
 先按 lsp-bridge 自身说明安装其 Emacs/Python 依赖。检查官方程序：
@@ -76,6 +92,13 @@ emacs -Q --batch -L . -l test/surge-mode-test.el -f ert-run-tests-batch-and-exit
 emacs -Q --batch -L . --eval '(progn (setq byte-compile-error-on-warn t) (byte-compile-file "surge-mode.el"))'
 #+end_src
 
+Eglot 接入测试覆盖三种 languageId、仅限 Eglot 的项目发现、命令解析和重复加载，不启动服务器进程：
+
+#+begin_src sh
+emacs -Q --batch -L . -L examples/eglot \
+  -l test/surge-eglot-test.el -f ert-run-tests-batch-and-exit
+#+end_src
+
 接入示例的回归测试需要先将 lsp-bridge 及其 Emacs 依赖加入 ~load-path~，然后运行以下命令；此测试只验证 languageId 选择和回调委托，不启动服务端进程：
 
 #+begin_src sh
@@ -88,7 +111,7 @@ emacs -Q --batch -L . -L examples/lsp-bridge \
 合成文件的官方诊断验证（需要本机 Surge；仅临时文件）：
 
 #+begin_src sh
-emacs -Q --batch -L . -l test/smoke-eglot.el
+emacs -Q --batch -L . -L examples/eglot -l test/smoke-eglot.el
 #+end_src
 
 该脚本通过 Eglot 验证包能参与真实诊断链路。lsp-bridge 的三种 languageId、overlay、全文更新和跨文件行为单独验证；不能用 Eglot 结果代替 lsp-bridge 结果。详细证据与未验证范围见 [[file:test/VALIDATION.org][验证记录]]。
